@@ -1,0 +1,180 @@
+.avatar-fields,
+.cosmetic-fields,
+.avatar-field,
+.avatar-field-pair {
+  display: grid;
+  min-width: 0;
+}
+
+.avatar-fields,
+.cosmetic-fields {
+  gap: 16px;
+}
+
+.avatar-fields {
+  container: avatar-fields / inline-size;
+}
+
+.avatar-field-pair {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.avatar-field {
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--cream);
+  font: 650 14px/1.5 system-ui, sans-serif;
+}
+
+.avatar-field legend {
+  margin-bottom: 6px;
+  padding: 0;
+}
+
+.avatar-field-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.avatar-field input[type="text"],
+.avatar-field select {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid #729079;
+  border-radius: 0;
+  background: #12352c;
+  color: var(--cream);
+  font: 500 16px/1.25 system-ui, sans-serif;
+}
+
+.avatar-select {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.avatar-select select {
+  display: block;
+  min-height: 46px;
+  padding-inline: 12px 36px;
+  appearance: none;
+  border-width: 2px;
+  background: #173c31;
+  box-shadow: inset 0 2px #335b49, inset 0 -3px #102b24;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.avatar-select select:hover {
+  border-color: var(--mint);
+}
+
+.avatar-select::after {
+  position: absolute;
+  top: 50%;
+  right: 13px;
+  width: 12px;
+  height: 8px;
+  transform: translateY(-50%);
+  clip-path: polygon(0 0, 25% 0, 25% 25%, 42% 25%, 42% 50%, 58% 50%, 58% 25%, 75% 25%, 75% 0, 100% 0, 100% 50%, 75% 50%, 75% 75%, 58% 75%, 58% 100%, 42% 100%, 42% 75%, 25% 75%, 25% 50%, 0 50%);
+  background: var(--gold);
+  pointer-events: none;
+  content: "";
+}
+
+.field-value {
+  margin-left: 6px;
+  color: var(--mint);
+  font-weight: 500;
+}
+
+.avatar-segment,
+.avatar-swatches {
+  display: grid;
+  gap: 5px;
+}
+
+.avatar-segment {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.avatar-swatches {
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+.avatar-segment label,
+.swatch-option {
+  position: relative;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.avatar-segment input,
+.swatch-option input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+}
+
+.avatar-segment label span,
+.swatch-option span {
+  display: grid;
+  place-items: center;
+  min-height: 44px;
+  border: 2px solid #547660;
+  background: #12352c;
+}
+
+.swatch-option span {
+  min-height: 40px;
+  border-color: #12352c;
+}
+
+.avatar-segment input:checked + span,
+.swatch-option input:checked + span {
+  border-color: var(--gold);
+  box-shadow: inset 0 0 0 2px var(--outline);
+}
+
+.swatch-option input:checked + span::before {
+  width: 7px;
+  height: 7px;
+  background: var(--cream);
+  box-shadow: 0 0 0 2px var(--outline);
+  content: "";
+}
+
+.avatar-field :is(input[type="text"], select):focus-visible,
+.avatar-segment input:focus-visible + span,
+.swatch-option input:focus-visible + span {
+  outline: 2px solid var(--cream);
+  outline-offset: 2px;
+}
+
+.cosmetic-fields {
+  padding: 9px 10px 12px;
+  margin: 0;
+  border: 1px solid #719075;
+  background: #193e33;
+}
+
+.cosmetic-fields > legend {
+  padding: 0 5px;
+  color: var(--gold);
+  font: 400 9px/1.5 var(--font-pixel);
+  text-transform: uppercase;
+}
+
+@container avatar-fields (max-width: 330px) {
+  .avatar-field-pair {
+    grid-template-columns: 1fr;
+  }
+}
