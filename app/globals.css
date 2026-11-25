@@ -618,6 +618,13 @@ body {
   background: #254e40;
 }
 
+.customization-fields {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
 .guest-avatar-form {
   display: grid;
   gap: 16px;

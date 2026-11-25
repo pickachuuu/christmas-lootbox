@@ -1,22 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { type ChangeEvent, type FormEvent, useState } from "react";
+import { type ChangeEvent, type FormEvent, useEffect, useState } from "react";
 import AvatarFields from "../avatar-fields";
 import { defaultAvatar, type AvatarLook } from "../avatar-options";
 import {
-  cleanWishlist, emptyWishlist, type Guest, importGuestRoster, maxGuestNameLength,
-  parseGuestRoster, removeGuest, saveGuest, serializeGuests, useGuestRoster,
+  cleanWishlist, emptyWishlist, type Guest, type GuestEdit, type GuestRoster, maxGuestNameLength,
+  parseGuestRoster, serializeGuests,
 } from "../guest-roster";
 import PixelAvatar from "../pixel-avatar";
+import { clearImportedBrowserRoster, loadRoster, readBrowserRoster, updateRoster } from "../roster-client";
 import WishlistFields from "../wishlist-fields";
 
 type Notice = { text: string; error?: boolean; undo?: Guest };
 
-function AvatarEditor({ guest, notice, onSave, onRemove, onUndo, onEdit }: {
+function AvatarEditor({ guest, notice, disabled, busy, onSave, onRemove, onUndo, onEdit }: {
   guest?: Guest;
   notice: Notice | null;
-  onSave: (guest: Guest) => boolean;
+  disabled: boolean;
+  busy: boolean;
+  onSave: (guest: Guest, changes?: GuestEdit) => Promise<boolean>;
   onRemove: (guest: Guest) => void;
   onUndo: (guest: Guest) => void;
   onEdit: () => void;
@@ -28,12 +31,17 @@ function AvatarEditor({ guest, notice, onSave, onRemove, onUndo, onEdit }: {
   const look = draftLook ?? guest?.avatar ?? defaultAvatar;
   const wishlist = draftWishlist ?? guest?.wishlist ?? emptyWishlist;
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!name.trim()) return;
+    if (disabled || !name.trim()) return;
 
     const id = guest?.id ?? Array.from(crypto.getRandomValues(new Uint32Array(4)), (part) => part.toString(36)).join("-");
-    if (onSave({ id, name: name.trim(), avatar: look, wishlist: draftWishlist ? cleanWishlist(draftWishlist) : guest?.wishlist })) {
+    const savedWishlist = draftWishlist === null ? undefined : cleanWishlist(draftWishlist);
+    const changes: GuestEdit = {};
+    if (draftName !== null) changes.name = name.trim();
+    if (draftLook !== null || guest?.avatar === null) changes.avatar = look;
+    if (savedWishlist !== undefined) changes.wishlist = savedWishlist;
+    if (await onSave({ id, name: name.trim(), avatar: look, wishlist: savedWishlist }, guest ? changes : undefined)) {
       setDraftName(null);
       setDraftLook(null);
       setDraftWishlist(null);
@@ -49,7 +57,7 @@ function AvatarEditor({ guest, notice, onSave, onRemove, onUndo, onEdit }: {
         <figcaption>Live preview</figcaption>
       </figure>
 
-      <div className="studio-controls">
+      <fieldset className="studio-controls" disabled={disabled}>
         <label className="avatar-field">
           Guest name
           <input
@@ -84,7 +92,7 @@ function AvatarEditor({ guest, notice, onSave, onRemove, onUndo, onEdit }: {
         </details>
 
         <div className="studio-save">
-          <button className="game-button" type="submit" disabled={!name.trim()}>Save avatar</button>
+          <button className="game-button" type="submit" disabled={!name.trim()}>{busy ? "Saving…" : "Save avatar"}</button>
           {guest && (
             <button className="game-button game-button--secondary game-button--danger" type="button" onClick={() => onRemove(guest)}>
               Remove guest
@@ -102,43 +110,74 @@ function AvatarEditor({ guest, notice, onSave, onRemove, onUndo, onEdit }: {
             )}
           </div>
         )}
-      </div>
+      </fieldset>
     </form>
   );
 }
 
 export default function Studio() {
-  const { guests } = useGuestRoster();
+  const [roster, setRoster] = useState<GuestRoster | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [hasBrowserRoster, setHasBrowserRoster] = useState(false);
   const [selected, setSelected] = useState<string | null>();
   const [editorRevision, setEditorRevision] = useState(0);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [fileNotice, setFileNotice] = useState<Notice | null>(null);
+  const guests = roster?.guests ?? [];
+  const disabled = busy || !roster;
   const activeGuest = selected === undefined ? guests[0] : guests.find(({ id }) => id === selected);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    loadRoster(controller.signal).then((loaded) => {
+      if (controller.signal.aborted) return;
+      setRoster(loaded);
+      setHasBrowserRoster(Boolean(readBrowserRoster()));
+      if (!loaded) setLoadError("Shared roster storage hasn’t been configured.");
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted) {
+        setLoadError(error instanceof Error ? error.message : "Couldn’t load the guest roster.");
+      }
+    });
+    return () => controller.abort();
+  }, [loadAttempt]);
 
   function chooseGuest(id: string | null) {
     setSelected(id);
     setNotice(null);
   }
 
-  function commitGuest(guest: Guest) {
+  async function commitGuest(guest: Guest, changes?: GuestEdit) {
+    setBusy(true);
+    setNotice(null);
     try {
-      saveGuest(guest);
+      setRoster(await updateRoster(changes
+        ? { action: "edit", id: guest.id, changes }
+        : { action: "add", guest }));
       setSelected(guest.id);
-      setNotice({ text: `Saved ${guest.name}'s avatar on this device.` });
+      setNotice({ text: "Guest saved." });
       return true;
     } catch (error) {
       setNotice({ text: (error as Error).message, error: true });
       return false;
+    } finally {
+      setBusy(false);
     }
   }
 
-  function deleteGuest(guest: Guest) {
+  async function deleteGuest(guest: Guest) {
+    setBusy(true);
+    setNotice(null);
     try {
-      removeGuest(guest.id);
+      setRoster(await updateRoster({ action: "remove", id: guest.id }));
       setSelected(undefined);
       setNotice({ text: `Removed ${guest.name}.`, undo: guest });
     } catch (error) {
       setNotice({ text: (error as Error).message, error: true });
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -152,26 +191,53 @@ export default function Studio() {
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
+  async function saveImport(incoming: GuestRoster) {
+    setRoster(await updateRoster({ action: "import", roster: incoming }));
+    setSelected(incoming.guests[0]?.id);
+    setEditorRevision((revision) => revision + 1);
+    setNotice(null);
+    setFileNotice({ text: `Imported ${incoming.guests.length} ${incoming.guests.length === 1 ? "guest" : "guests"}.` });
+  }
+
   async function importRoster(event: ChangeEvent<HTMLInputElement>) {
     const input = event.currentTarget;
     const file = input.files?.[0];
     input.value = "";
-    if (!file) return;
+    if (!file || disabled) return;
 
+    setBusy(true);
+    setFileNotice(null);
     try {
       if (file.size > 256_000) throw new Error("Choose a roster file smaller than 256 KB.");
       const content = JSON.parse(await file.text()) as unknown;
-      const roster = parseGuestRoster(content);
-      importGuestRoster(roster);
-      setSelected(roster.guests[0]?.id);
-      setEditorRevision((revision) => revision + 1);
-      setNotice(null);
-      setFileNotice({ text: `Imported ${roster.guests.length} ${roster.guests.length === 1 ? "guest" : "guests"}.` });
+      await saveImport(parseGuestRoster(content));
     } catch (error) {
       setFileNotice({
         text: error instanceof SyntaxError ? "That file isn’t valid JSON." : (error as Error).message,
         error: true,
       });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function importBrowserRoster() {
+    const saved = readBrowserRoster();
+    if (!saved) {
+      setHasBrowserRoster(false);
+      setFileNotice({ text: "There’s no saved roster in this browser.", error: true });
+      return;
+    }
+    setBusy(true);
+    setFileNotice(null);
+    try {
+      await saveImport(saved.roster);
+      clearImportedBrowserRoster(saved.raw);
+      setHasBrowserRoster(Boolean(readBrowserRoster()));
+    } catch (error) {
+      setFileNotice({ text: (error as Error).message, error: true });
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -197,6 +263,7 @@ export default function Studio() {
                     className="game-button game-button--secondary studio-guest-button"
                     type="button"
                     aria-pressed={guest.id === activeGuest?.id}
+                    disabled={busy}
                     onClick={() => chooseGuest(guest.id)}
                   >
                     <span className="studio-guest-icon">
@@ -209,29 +276,46 @@ export default function Studio() {
             </ul>
           )}
 
-          <button className="game-button game-button--secondary studio-add" type="button" onClick={() => chooseGuest(null)}>
+          <button className="game-button game-button--secondary studio-add" type="button" onClick={() => chooseGuest(null)} disabled={disabled}>
             <span aria-hidden="true">+</span> Add guest
           </button>
 
           <div className="studio-file-actions">
-            <button className="game-button game-button--secondary" type="button" onClick={exportRoster} disabled={guests.length === 0}>Export JSON</button>
-            <label className="game-button game-button--secondary studio-import">
+            <button className="game-button game-button--secondary" type="button" onClick={exportRoster} disabled={disabled || guests.length === 0}>Export JSON</button>
+            <label className="game-button game-button--secondary studio-import" aria-disabled={disabled}>
               Import JSON
-              <input type="file" accept=".json,application/json" onChange={importRoster} />
+              <input type="file" accept=".json,application/json" onChange={importRoster} disabled={disabled} />
             </label>
+            {hasBrowserRoster && (
+              <button className="game-button game-button--secondary" type="button" onClick={importBrowserRoster} disabled={disabled}>
+                Import this browser’s roster
+              </button>
+            )}
           </div>
           {fileNotice && (
             <p className="studio-notice" role={fileNotice.error ? "alert" : "status"} data-error={fileNotice.error}>
               {fileNotice.text}
             </p>
           )}
-          <p className="studio-storage">Saved in this browser.</p>
+          {loadError ? (
+            <>
+              <p className="studio-notice" role="alert" data-error>{loadError}</p>
+              <button className="game-button game-button--secondary" type="button" onClick={() => {
+                setLoadError("");
+                setLoadAttempt((attempt) => attempt + 1);
+              }}>Try again</button>
+            </>
+          ) : (
+            <p className="studio-storage" role="status">{roster ? "Roster shared across devices." : "Loading guests…"}</p>
+          )}
         </aside>
 
         <AvatarEditor
           key={`${editorRevision}:${activeGuest ? `guest:${activeGuest.id}` : "new"}`}
           guest={activeGuest}
           notice={notice}
+          disabled={disabled}
+          busy={busy}
           onSave={commitGuest}
           onRemove={deleteGuest}
           onUndo={commitGuest}

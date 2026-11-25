@@ -1,6 +1,4 @@
-import { useSyncExternalStore } from "react";
 import { parseAvatarLook, type AvatarLook } from "./avatar-options";
-import presets from "./guest-presets.json";
 
 export const maxGuestNameLength = 40;
 export const maxWishlistItems = 5;
@@ -16,13 +14,18 @@ export type Guest = {
 
 export type GuestCustomization = Partial<Pick<Guest, "avatar" | "wishlist">>;
 
-type GuestRoster = {
+export type GuestRoster = {
   version: 1;
   guests: Guest[];
 };
 
-const storageKey = "santa-shuffle:guest-roster:v1";
-const rosterEvent = "santa-shuffle:guest-roster-changed";
+export type GuestEdit = Partial<Omit<Guest, "id">>;
+
+export type RosterChange =
+  | { action: "add"; guest: Guest }
+  | { action: "edit"; id: string; changes: GuestEdit }
+  | { action: "remove"; id: string }
+  | { action: "import"; roster: GuestRoster };
 
 export function guestNameKey(name: string) {
   return name.normalize("NFKC").toLowerCase();
@@ -83,84 +86,6 @@ export function parseGuestRoster(value: unknown): GuestRoster {
   return { version: 1, guests };
 }
 
-const bundledRoster = parseGuestRoster(presets);
-let cachedRaw: string | null = null;
-let cachedRoster = bundledRoster;
-
-function readRoster(): GuestRoster {
-  try {
-    const raw = window.localStorage.getItem(storageKey);
-    if (raw !== cachedRaw) {
-      cachedRoster = raw ? parseGuestRoster(JSON.parse(raw)) : bundledRoster;
-      cachedRaw = raw;
-    }
-    return cachedRoster;
-  } catch {
-    return bundledRoster;
-  }
-}
-
-function subscribe(onChange: () => void) {
-  function onStorage(event: StorageEvent) {
-    if (event.key === storageKey || event.key === null) onChange();
-  }
-
-  window.addEventListener("storage", onStorage);
-  window.addEventListener(rosterEvent, onChange);
-  return () => {
-    window.removeEventListener("storage", onStorage);
-    window.removeEventListener(rosterEvent, onChange);
-  };
-}
-
-export function useGuestRoster() {
-  return useSyncExternalStore(subscribe, readRoster, () => bundledRoster);
-}
-
 export function serializeGuests(guests: readonly Guest[]) {
   return JSON.stringify({ version: 1, guests }, null, 2);
-}
-
-function saveRoster(guests: Guest[]) {
-  try {
-    window.localStorage.setItem(storageKey, serializeGuests(guests));
-  } catch {
-    throw new Error("This browser couldn’t save the roster. Check that local storage is enabled.");
-  }
-  window.dispatchEvent(new Event(rosterEvent));
-}
-
-export function saveGuest(guest: Guest) {
-  const { guests } = readRoster();
-  const nameKey = guestNameKey(guest.name);
-  if (guests.some(({ id, name }) => id !== guest.id && guestNameKey(name) === nameKey)) {
-    throw new Error("That name is already on the guest list.");
-  }
-
-  const existing = guests.some(({ id }) => id === guest.id);
-  saveRoster(existing ? guests.map((entry) => entry.id === guest.id ? guest : entry) : [...guests, guest]);
-}
-
-export function removeGuest(id: string) {
-  saveRoster(readRoster().guests.filter((guest) => guest.id !== id));
-}
-
-export function saveGuestCustomization(id: string, customization: GuestCustomization) {
-  const { guests } = readRoster();
-  if (!guests.some((guest) => guest.id === id)) {
-    throw new Error("This guest is no longer on the roster. Go back and choose your name again.");
-  }
-  saveRoster(guests.map((guest) => guest.id === id ? { ...guest, ...customization } : guest));
-}
-
-export function importGuestRoster(roster: GuestRoster) {
-  const imported = new Map(roster.guests.map((guest) => [guest.id, guest]));
-  const guests = readRoster().guests.map((guest) => {
-    const replacement = imported.get(guest.id);
-    imported.delete(guest.id);
-    return replacement ? { ...replacement, wishlist: replacement.wishlist ?? guest.wishlist } : guest;
-  });
-
-  const merged = parseGuestRoster({ version: 1, guests: [...guests, ...imported.values()] });
-  saveRoster(merged.guests);
 }

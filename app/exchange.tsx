@@ -7,9 +7,9 @@ import { defaultAvatar, type AvatarLook } from "./avatar-options";
 import { createDraw, demoGuests } from "./draw";
 import {
   cleanWishlist, emptyWishlist, type Guest, type GuestCustomization,
-  saveGuestCustomization, useGuestRoster,
 } from "./guest-roster";
 import PixelAvatar from "./pixel-avatar";
+import { drawRecipient, loadRoster, updateRoster } from "./roster-client";
 import WishlistFields from "./wishlist-fields";
 
 type Screen = "welcome" | "guests" | "pull" | "drawing" | "avatar" | "wishlist" | "result";
@@ -37,31 +37,26 @@ function GiftScene({ opened = false, shake }: { opened?: boolean; shake?: "soft"
 }
 
 export default function Exchange({ drawOpen }: { drawOpen: boolean }) {
-  const roster = useGuestRoster();
-  const [requestedScreen, setScreen] = useState<Screen>("welcome");
+  const [screen, setScreen] = useState<Screen>("welcome");
   const [guests, setGuests] = useState<readonly Guest[]>(demoGuests);
   const [guestId, setGuestId] = useState<string | null>(null);
-  const [draw, setDraw] = useState<ReadonlyMap<string, string> | null>(null);
+  const [demoDraw, setDemoDraw] = useState<ReadonlyMap<string, string> | null>(null);
+  const [recipient, setRecipient] = useState<Guest | null>(null);
   const [pullStep, setPullStep] = useState(0);
   const [demoCustomizations, setDemoCustomizations] = useState<Record<string, GuestCustomization>>({});
   const [draftAvatar, setDraftAvatar] = useState<AvatarLook>(defaultAvatar);
   const [draftWishlist, setDraftWishlist] = useState<string[]>([]);
-  const [saveError, setSaveError] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
   const title = useRef<HTMLHeadingElement>(null);
   const previousScreen = useRef<Screen>("welcome");
   const canPull = drawOpen && guests.length >= 2;
-  const screen = !canPull && (requestedScreen === "drawing" || requestedScreen === "result")
-    ? "pull"
-    : requestedScreen;
   const guest = guests.find(({ id }) => id === guestId);
-  const recipientId = guestId ? draw?.get(guestId) : undefined;
-  const recipient = guests.find(({ id }) => id === recipientId);
   const isDemo = guests === demoGuests;
   const guestCaption = isDemo ? "Demo guest list" : undefined;
 
   function customizationFor(entry: Guest): GuestCustomization {
-    if (isDemo) return demoCustomizations[entry.id] ?? entry;
-    return roster.guests.find(({ id }) => id === entry.id) ?? entry;
+    return isDemo ? demoCustomizations[entry.id] ?? entry : entry;
   }
 
   const guestCustomization = guest && customizationFor(guest);
@@ -92,14 +87,19 @@ export default function Exchange({ drawOpen }: { drawOpen: boolean }) {
     return () => window.clearTimeout(timer);
   }, [screen, pullStep]);
 
-  function enterExchange() {
-    const nextGuests = roster.guests.length ? roster.guests : demoGuests;
-    if (draw && (draw.size !== nextGuests.length || nextGuests.some(({ id }) => !draw.has(id)))) {
-      setDraw(null);
+  async function enterExchange() {
+    setError("");
+    setBusy(true);
+    try {
+      const roster = await loadRoster();
+      setGuests(roster?.guests.length ? roster.guests : demoGuests);
+      setGuestId(null);
+      setScreen("guests");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Couldn’t load the guest roster.");
+    } finally {
+      setBusy(false);
     }
-    setGuests(nextGuests);
-    setGuestId(null);
-    setScreen("guests");
   }
 
   function confirmGuest(event: FormEvent<HTMLFormElement>) {
@@ -107,32 +107,48 @@ export default function Exchange({ drawOpen }: { drawOpen: boolean }) {
     if (guest) setScreen("pull");
   }
 
-  function pullName() {
+  async function pullName() {
     if (!canPull || !guest) return;
-    if (!draw) setDraw(createDraw(guests));
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setScreen("result");
-    } else {
-      setPullStep(0);
-      setScreen("drawing");
+    setError("");
+    setBusy(true);
+    try {
+      if (isDemo) {
+        const draw = demoDraw ?? createDraw(demoGuests);
+        setDemoDraw(draw);
+        setRecipient(demoGuests.find(({ id }) => id === draw.get(guest.id))!);
+      } else {
+        setRecipient(await drawRecipient(guest.id));
+      }
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        setScreen("result");
+      } else {
+        setPullStep(0);
+        setScreen("drawing");
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Couldn’t pull a name. Try again.");
+    } finally {
+      setBusy(false);
     }
   }
 
   function editWishlist() {
     setDraftWishlist([...guestWishlist]);
-    setSaveError("");
+    setError("");
     setScreen("wishlist");
   }
 
   function editAvatar() {
     setDraftAvatar(guestAvatar ?? defaultAvatar);
-    setSaveError("");
+    setError("");
     setScreen("avatar");
   }
 
-  function saveCustomization(customization: GuestCustomization) {
+  async function saveCustomization(customization: GuestCustomization) {
     if (!guest) return;
 
+    setError("");
+    setBusy(true);
     try {
       if (isDemo) {
         setDemoCustomizations((current) => ({
@@ -140,17 +156,26 @@ export default function Exchange({ drawOpen }: { drawOpen: boolean }) {
           [guest.id]: { ...current[guest.id], ...customization },
         }));
       } else {
-        saveGuestCustomization(guest.id, customization);
+        const roster = await updateRoster({ action: "edit", id: guest.id, changes: customization });
+        setGuests(roster.guests);
       }
       setScreen("pull");
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : "Couldn’t save your changes.");
+      setError(error instanceof Error ? error.message : "Couldn’t save your changes.");
+    } finally {
+      setBusy(false);
     }
   }
 
   function returnToGuests() {
+    setError("");
     setGuestId(null);
     setScreen("guests");
+  }
+
+  function returnToPull() {
+    setError("");
+    setScreen("pull");
   }
 
   return (
@@ -164,9 +189,10 @@ export default function Exchange({ drawOpen }: { drawOpen: boolean }) {
               <span>Shuffle</span>
             </h1>
             <p className="welcome-caption">Secret Santa</p>
-            <button className="game-button" onClick={enterExchange}>
-              Enter<span className="button-arrow" aria-hidden="true" />
+            <button className="game-button" onClick={enterExchange} disabled={busy}>
+              {busy ? "Loading guests…" : "Enter"}<span className="button-arrow" aria-hidden="true" />
             </button>
+            {error && <p className="customization-error" role="alert">{error}</p>}
             <Link className="game-button game-button--secondary" href="/avatars">Avatar Studio</Link>
           </>
         )}
@@ -221,10 +247,10 @@ export default function Exchange({ drawOpen }: { drawOpen: boolean }) {
             <button
               className="game-button draw-button"
               onClick={pullName}
-              disabled={!canPull}
+              disabled={!canPull || busy}
               aria-describedby={canPull ? undefined : "draw-status"}
             >
-              Pull a name
+              {busy ? "Getting your match…" : "Pull a name"}
               {!canPull && <span className="button-lock" aria-hidden="true" />}
             </button>
             {!canPull && (
@@ -232,14 +258,15 @@ export default function Exchange({ drawOpen }: { drawOpen: boolean }) {
                 {drawOpen ? "The draw needs at least two guests." : "The draw opens after the grace period."}
               </p>
             )}
-            <button className="game-button game-button--secondary avatar-edit-button" onClick={editAvatar}>
+            {error && <p className="customization-error" role="alert">{error}</p>}
+            <button className="game-button game-button--secondary avatar-edit-button" onClick={editAvatar} disabled={busy}>
               {guestAvatar && <PixelAvatar look={guestAvatar} />}
               Edit my avatar
             </button>
-            <button className="game-button game-button--secondary" onClick={editWishlist}>
+            <button className="game-button game-button--secondary" onClick={editWishlist} disabled={busy}>
               {guestWishlist.length ? "Edit my wishlist" : "Add my wishlist"}
             </button>
-            <button className="game-button game-button--secondary" onClick={() => setScreen("guests")}>
+            <button className="game-button game-button--secondary" onClick={returnToGuests} disabled={busy}>
               Change name
             </button>
           </>
@@ -268,11 +295,13 @@ export default function Exchange({ drawOpen }: { drawOpen: boolean }) {
                 </div>
                 <figcaption>{guest?.name}</figcaption>
               </figure>
-              <AvatarFields look={draftAvatar} onChange={setDraftAvatar} />
+              <fieldset className="customization-fields" disabled={busy}>
+                <AvatarFields look={draftAvatar} onChange={setDraftAvatar} />
+              </fieldset>
               <div className="guest-avatar-actions">
-                {saveError && <p className="customization-error" role="alert">{saveError}</p>}
-                <button className="game-button" type="submit">Save avatar</button>
-                <button className="game-button game-button--secondary" type="button" onClick={() => setScreen("pull")}>Back</button>
+                {error && <p className="customization-error" role="alert">{error}</p>}
+                <button className="game-button" type="submit" disabled={busy}>{busy ? "Saving…" : "Save avatar"}</button>
+                <button className="game-button game-button--secondary" type="button" onClick={returnToPull} disabled={busy}>Back</button>
               </div>
             </form>
           </>
@@ -286,10 +315,12 @@ export default function Exchange({ drawOpen }: { drawOpen: boolean }) {
               event.preventDefault();
               saveCustomization({ wishlist: cleanWishlist(draftWishlist) });
             }}>
-              <WishlistFields items={draftWishlist} onChange={setDraftWishlist} />
-              {saveError && <p className="customization-error" role="alert">{saveError}</p>}
-              <button className="game-button" type="submit">Save wishlist</button>
-              <button className="game-button game-button--secondary" type="button" onClick={() => setScreen("pull")}>Back</button>
+              <fieldset className="customization-fields" disabled={busy}>
+                <WishlistFields items={draftWishlist} onChange={setDraftWishlist} />
+              </fieldset>
+              {error && <p className="customization-error" role="alert">{error}</p>}
+              <button className="game-button" type="submit" disabled={busy}>{busy ? "Saving…" : "Save wishlist"}</button>
+              <button className="game-button game-button--secondary" type="button" onClick={returnToPull} disabled={busy}>Back</button>
             </form>
           </>
         )}

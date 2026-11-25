@@ -1,11 +1,13 @@
+import { connection } from "next/server";
+import { isDrawOpen } from "./draw-config";
 import Exchange from "./exchange";
 
-export default function Home() {
-  const drawOpen = process.env.SANTA_SHUFFLE_DRAW_OPEN === "true";
+export default async function Home() {
+  await connection();
 
   return (
     <main className="stage">
-      <Exchange drawOpen={drawOpen} />
+      <Exchange drawOpen={isDrawOpen()} />
     </main>
   );
 }
