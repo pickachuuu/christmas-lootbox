@@ -3,6 +3,17 @@ export const bodyTypes = {
   woman: "Woman",
 } as const;
 
+export const outfitColors = {
+  cranberry: { label: "Cranberry", base: "#a94856", light: "#e27a73", shade: "#72384c" },
+  evergreen: { label: "Evergreen", base: "#467e48", light: "#78ac64", shade: "#2e5838" },
+  teal: { label: "Teal", base: "#378b77", light: "#69c2a1", shade: "#245f60" },
+  blue: { label: "Blue", base: "#486db5", light: "#81a2e6", shade: "#324c80" },
+  plum: { label: "Plum", base: "#805099", light: "#b887d1", shade: "#553566" },
+  pink: { label: "Pink", base: "#c46897", light: "#ed9abf", shade: "#884669" },
+  gold: { label: "Gold", base: "#c38c37", light: "#f3c670", shade: "#885b29" },
+  cream: { label: "Cream", base: "#deceaa", light: "#fff0cc", shade: "#ab916f" },
+} as const;
+
 export const skinTones = {
   porcelain: { label: "Porcelain", base: "#f7d3b4", light: "#ffe5cc", shade: "#dd9d7e" },
   peach: { label: "Peach", base: "#edb58c", light: "#ffd2a9", shade: "#cc8768" },
@@ -81,6 +92,7 @@ export const faceDetails = {
 
 export type AvatarLook = {
   body: keyof typeof bodyTypes;
+  outfit: keyof typeof outfitColors;
   skin: keyof typeof skinTones;
   hair: keyof typeof hairStyles;
   color: keyof typeof hairColors;
@@ -92,6 +104,7 @@ export type AvatarLook = {
 
 export const defaultAvatar: AvatarLook = {
   body: "man",
+  outfit: "cranberry",
   skin: "honey",
   hair: "side",
   color: "coffee",
@@ -103,6 +116,7 @@ export const defaultAvatar: AvatarLook = {
 
 const choices = {
   body: bodyTypes,
+  outfit: outfitColors,
   skin: skinTones,
   hair: hairStyles,
   color: hairColors,
@@ -116,6 +130,7 @@ export function parseAvatarLook(value: unknown): AvatarLook | null {
   if (typeof value !== "object" || value === null) return null;
   const { headwear, accessory } = defaultAvatar;
   const look: Record<string, unknown> = { headwear, accessory, ...value };
+  if (look.outfit === undefined) look.outfit = look.body === "woman" ? "teal" : defaultAvatar.outfit;
   if (look.hair === "highFade") look.hair = "lowFade";
 
   const fields = Object.entries(choices);

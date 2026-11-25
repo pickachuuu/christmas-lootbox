@@ -1,6 +1,6 @@
 import {
   accessoryOptions, bodyTypes, eyewearOptions, faceDetails, hairColors,
-  hairStyleGroups, hairStyles, headwearOptions, skinTones, type AvatarLook,
+  hairStyleGroups, hairStyles, headwearOptions, outfitColors, skinTones, type AvatarLook,
 } from "./avatar-options";
 
 function SelectField<Key extends string>({ label, options, groups, value, onChange }: {
@@ -98,6 +98,7 @@ export default function AvatarFields({ look, onChange }: {
         </div>
       </fieldset>
 
+      <SwatchField label="Outfit color" name="outfit-color" options={outfitColors} value={look.outfit} onChange={(value) => update("outfit", value)} />
       <SwatchField label="Skin tone" name="skin" options={skinTones} value={look.skin} onChange={(value) => update("skin", value)} />
       <SelectField label="Hairstyle" options={hairStyles} groups={hairStyleGroups} value={look.hair} onChange={(value) => update("hair", value)} />
       <SwatchField label="Hair color" name="hair-color" options={hairColors} value={look.color} onChange={(value) => update("color", value)} />

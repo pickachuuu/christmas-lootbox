@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import AvatarFields from "./avatar-fields";
 import { defaultAvatar, type AvatarLook } from "./avatar-options";
@@ -193,7 +192,6 @@ export default function Exchange({ drawOpen }: { drawOpen: boolean }) {
               {busy ? "Loading guests…" : "Enter"}<span className="button-arrow" aria-hidden="true" />
             </button>
             {error && <p className="customization-error" role="alert">{error}</p>}
-            <Link className="game-button game-button--secondary" href="/avatars">Avatar Studio</Link>
           </>
         )}
 

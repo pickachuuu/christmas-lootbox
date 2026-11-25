@@ -12,9 +12,12 @@ const publicPixel = localFont({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(`https://${process.env.VERCEL_PROJECT_PRODUCTION_URL || "christmas-lootbox.vercel.app"}`),
   title: "Santa Shuffle",
   description: "A Christmas gift exchange.",
   icons: { icon: "/gift.png" },
+  openGraph: { type: "website" },
+  twitter: { card: "summary_large_image" },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

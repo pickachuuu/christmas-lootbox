@@ -1,4 +1,4 @@
-import { hairColors, skinTones, type AvatarLook } from "./avatar-options";
+import { hairColors, outfitColors, skinTones, type AvatarLook } from "./avatar-options";
 import { accessoryArt, headwearArt, type Block, type Cosmetic } from "./avatar-cosmetics";
 
 type Hair = {
@@ -140,9 +140,7 @@ export function paintAvatar(ctx: CanvasRenderingContext2D, look: AvatarLook) {
   const headwear = headwearArt[look.headwear];
   const accessory = accessoryArt[look.accessory];
   const woman = look.body === "woman";
-  const sweater = woman
-    ? { base: "#378b77", light: "#69c2a1", shade: "#245f60" }
-    : { base: "#a94856", light: "#e27a73", shade: "#72384c" };
+  const sweater = outfitColors[look.outfit];
 
   function block(fill: string, x: number, y: number, width: number, height = 1) {
     ctx.fillStyle = fill;
