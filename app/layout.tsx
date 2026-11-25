@@ -13,7 +13,7 @@ const publicPixel = localFont({
 
 export const metadata: Metadata = {
   metadataBase: new URL(`https://${process.env.VERCEL_PROJECT_PRODUCTION_URL || "christmas-lootbox.vercel.app"}`),
-  title: "Santa Shuffle",
+  title: "Manito Manita",
   description: "A Christmas gift exchange.",
   icons: { icon: "/gift.png" },
   openGraph: { type: "website" },

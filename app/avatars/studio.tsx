@@ -244,7 +244,7 @@ export default function Studio() {
   return (
     <div className="studio">
       <header className="studio-header">
-        <Link className="game-button game-button--secondary studio-back" href="/">← Santa Shuffle</Link>
+        <Link className="game-button game-button--secondary studio-back" href="/">← Manito Manita</Link>
         <h1>Avatar Studio</h1>
       </header>
 

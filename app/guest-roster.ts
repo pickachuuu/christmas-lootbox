@@ -41,7 +41,7 @@ export function parseGuestRoster(value: unknown): GuestRoster {
     !("version" in value) || value.version !== 1 ||
     !("guests" in value) || !Array.isArray(value.guests)
   ) {
-    throw new Error("Choose a Santa Shuffle roster saved as JSON.");
+    throw new Error("Choose a Manito Manita roster saved as JSON.");
   }
 
   const ids = new Set<string>();

@@ -184,8 +184,8 @@ export default function Exchange({ drawOpen }: { drawOpen: boolean }) {
           <>
             <GiftScene />
             <h1 id="exchange-title" className="welcome-title" ref={title} tabIndex={-1}>
-              <span>Santa</span>{" "}
-              <span>Shuffle</span>
+              <span>Manito</span>{" "}
+              <span>Manita</span>
             </h1>
             <p className="welcome-caption">Secret Santa</p>
             <button className="game-button" onClick={enterExchange} disabled={busy}>

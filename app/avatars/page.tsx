@@ -3,7 +3,7 @@ import Studio from "./studio";
 import "./studio.css";
 
 export const metadata: Metadata = {
-  title: "Avatar Studio | Santa Shuffle",
+  title: "Avatar Studio | Manito Manita",
 };
 
 export default function AvatarStudioPage() {
