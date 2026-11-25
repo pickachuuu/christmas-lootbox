@@ -25,11 +25,27 @@ export class RosterError extends Error {
 }
 
 function getRedis() {
-  const url = process.env.UPSTASH_REDIS_REST_URL?.trim() || process.env.KV_REST_API_URL?.trim();
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim() || process.env.KV_REST_API_TOKEN?.trim();
-  if (!url && !token) return null;
+  if (redis) return redis;
+
+  let url = process.env.UPSTASH_REDIS_REST_URL?.trim() || process.env.KV_REST_API_URL?.trim();
+  let token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim() || process.env.KV_REST_API_TOKEN?.trim();
+  if (!url || !token) {
+    const prefixedUrls = Object.keys(process.env).filter((name) =>
+      /_(?:UPSTASH_REDIS_REST|KV_REST_API)_URL$/.test(name),
+    );
+    const pairs = prefixedUrls.map((name) => ({
+      url: process.env[name]?.trim(),
+      token: process.env[`${name.slice(0, -3)}TOKEN`]?.trim(),
+    })).filter((pair) => pair.url && pair.token);
+
+    if (pairs.length > 1) {
+      throw new RosterError("Multiple Redis connections were found. Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN for the roster database.", 503);
+    }
+    if (pairs[0]) ({ url, token } = pairs[0]);
+    if (!url && !token && prefixedUrls.length === 0) return null;
+  }
   if (!url || !token) throw new RosterError("Shared roster storage is missing configuration.", 503);
-  return redis ??= new Redis({
+  return redis = new Redis({
     url,
     token,
     cache: "no-store",
