@@ -193,11 +193,3 @@ export async function pullSharedRecipient(id: string) {
   });
   return assignedRecipient(roster, id);
 }
-
-export async function readSharedRecipient(id: string) {
-  const roster = await readStoredRoster();
-  if (!roster) throw new RosterError("Shared roster storage hasn’t been configured.", 503);
-  if (getDrawStatus(roster) !== "open") throw new RosterError("The draw isn’t open.", 403);
-  if (!roster.pulled?.includes(id)) throw new RosterError("Pull a name to see your match.", 404);
-  return assignedRecipient(roster, id);
-}

@@ -18,7 +18,7 @@ async function rosterRequest<T>(options?: RequestInit, guestId?: string): Promis
   return response.json();
 }
 
-function post<T>(change: RosterChange | { action: "draw" | "view-match"; id: string }) {
+function post<T>(change: RosterChange | { action: "draw"; id: string }) {
   return rosterRequest<T>({
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -40,10 +40,6 @@ export function updateRoster(change: RosterChange) {
 
 export function drawRecipient(id: string) {
   return post<Guest>({ action: "draw", id });
-}
-
-export function viewRecipient(id: string) {
-  return post<Guest>({ action: "view-match", id });
 }
 
 export function readBrowserRoster() {

@@ -8,7 +8,7 @@ import {
   cleanWishlist, emptyWishlist, type DrawStatus, type Guest, type GuestCustomization,
 } from "./guest-roster";
 import PixelAvatar from "./pixel-avatar";
-import { drawRecipient, loadGuestRoster, loadRoster, RosterRequestError, updateRoster, viewRecipient } from "./roster-client";
+import { drawRecipient, loadGuestRoster, loadRoster, RosterRequestError, updateRoster } from "./roster-client";
 import WishlistFields from "./wishlist-fields";
 
 type Screen = "welcome" | "guests" | "pull" | "drawing" | "avatar" | "wishlist" | "result";
@@ -62,7 +62,6 @@ export default function Exchange({ demoDrawOpen }: { demoDrawOpen: boolean }) {
   const drawStatus = isDemo ? (demoDrawOpen ? "open" : "closed") : sharedDrawStatus;
   const alreadyPulled = isDemo ? guest !== undefined && demoPulled.has(guest.id) : sharedHasPulled;
   const canPull = drawStatus === "open" && !alreadyPulled;
-  const canViewMatch = drawStatus === "open" && alreadyPulled;
   const guestCaption = isDemo ? "Demo guest list" : undefined;
 
   function customizationFor(entry: Guest): GuestCustomization {
@@ -146,8 +145,8 @@ export default function Exchange({ demoDrawOpen }: { demoDrawOpen: boolean }) {
     }
   }
 
-  async function showMatch(reopen: boolean) {
-    if (!guest || busy || (reopen ? !canViewMatch : !canPull)) return;
+  async function pullMatch() {
+    if (!guest || busy || !canPull) return;
     setError("");
     setBusy(true);
     try {
@@ -157,10 +156,10 @@ export default function Exchange({ demoDrawOpen }: { demoDrawOpen: boolean }) {
         setRecipient(demoGuests.find(({ id }) => id === draw.get(guest.id))!);
         setDemoPulled((pulled) => new Set(pulled).add(guest.id));
       } else {
-        setRecipient(await (reopen ? viewRecipient(guest.id) : drawRecipient(guest.id)));
+        setRecipient(await drawRecipient(guest.id));
         setSharedHasPulled(true);
       }
-      if (reopen || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
         setScreen("result");
       } else {
         setPullStep(0);
@@ -295,18 +294,13 @@ export default function Exchange({ demoDrawOpen }: { demoDrawOpen: boolean }) {
             <h1 id="exchange-title" ref={title} tabIndex={-1}>Ready, {guest?.name}?</h1>
             <button
               className="game-button draw-button"
-              onClick={() => showMatch(false)}
+              onClick={pullMatch}
               disabled={!canPull || busy}
               aria-describedby={drawStatus === "open" ? undefined : "draw-status"}
             >
               {alreadyPulled ? "Already pulled" : canPull && busy ? "Getting your match…" : "Pull a name"}
               {!canPull && <span className="button-lock" aria-hidden="true" />}
             </button>
-            {canViewMatch && (
-              <button className="game-button game-button--secondary" onClick={() => showMatch(true)} disabled={busy}>
-                {busy ? "Loading your match…" : "View my match"}
-              </button>
-            )}
             {drawStatus !== "open" && (
               <p id="draw-status" className="screen-caption">
                 {drawStatusMessages[drawStatus]}

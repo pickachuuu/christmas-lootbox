@@ -1,6 +1,6 @@
 import { guestNameKey, parseGuestRoster, type Guest, type GuestRoster } from "../../guest-roster";
 import {
-  changeSharedGuests, pullSharedRecipient, readSharedRecipient, readSharedRoster, RosterError,
+  changeSharedGuests, pullSharedRecipient, readSharedRoster, RosterError,
 } from "../../roster-storage";
 
 function respond(body: unknown, status = 200) {
@@ -61,7 +61,6 @@ async function applyChange(body: unknown) {
   if ("id" in body && typeof body.id === "string" && body.id.trim()) {
     const id = body.id;
     if (body.action === "draw") return pullSharedRecipient(id);
-    if (body.action === "view-match") return readSharedRecipient(id);
     if (body.action === "remove") return changeSharedGuests((guests) => guests.filter((guest) => guest.id !== id));
     if (body.action === "edit" && "changes" in body) {
       const { changes } = body;
