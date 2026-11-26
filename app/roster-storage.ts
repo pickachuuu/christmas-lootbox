@@ -3,9 +3,9 @@ import { Redis } from "@upstash/redis";
 import { createDraw } from "./draw";
 import { isDrawOpen } from "./draw-config";
 import presets from "./guest-presets.json";
-import { parseGuestRoster, type Guest, type GuestRoster } from "./guest-roster";
+import { parseGuestRoster, type DrawStatus, type Guest, type GuestRoster, type SharedGuestRoster } from "./guest-roster";
 
-type StoredRoster = GuestRoster & { draw?: [string, string][] };
+type StoredRoster = GuestRoster & { drawOpen?: true; draw?: [string, string][] };
 
 const key = "santa-shuffle:guest-roster:v1";
 const initialRoster = parseGuestRoster(presets);
@@ -58,8 +58,10 @@ function getRedis() {
 function decodeRoster(raw: string | null): StoredRoster {
   if (raw === null) return initialRoster;
   const stored: unknown = JSON.parse(raw);
-  const roster = parseGuestRoster(stored);
-  if (!stored || typeof stored !== "object" || !("draw" in stored)) return roster;
+  const roster: StoredRoster = parseGuestRoster(stored);
+  if (!stored || typeof stored !== "object") return roster;
+  if ("drawOpen" in stored && stored.drawOpen === true) roster.drawOpen = true;
+  if (!("draw" in stored)) return roster;
 
   const ids = new Set(roster.guests.map(({ id }) => id));
   const givers = new Set<string>();
@@ -84,8 +86,17 @@ function decodeRoster(raw: string | null): StoredRoster {
   return { ...roster, draw: assignments };
 }
 
-function publicRoster({ version, guests }: StoredRoster): GuestRoster {
-  return { version, guests };
+function getDrawStatus(roster: StoredRoster): DrawStatus {
+  if (!roster.drawOpen && !isDrawOpen()) return "closed";
+  if (roster.draw) return "open";
+  if (roster.guests.length < 2) return "needs-guests";
+  if (roster.guests.some((guest) => !guest.wishlist?.length)) return "needs-wishlists";
+  return "open";
+}
+
+function publicRoster(roster: StoredRoster): SharedGuestRoster {
+  const { version, guests } = roster;
+  return { version, guests, drawStatus: getDrawStatus(roster) };
 }
 
 export async function readSharedRoster() {
@@ -116,18 +127,35 @@ export async function changeSharedGuests(change: (guests: Guest[]) => Guest[]) {
     const guests = change(current.guests);
     const ids = new Set(current.guests.map(({ id }) => id));
     const sameGuests = ids.size === guests.length && guests.every(({ id }) => ids.has(id));
-    return { version: 1, guests, draw: sameGuests ? current.draw : undefined };
+    return { ...current, guests, draw: sameGuests ? current.draw : undefined };
   });
   return publicRoster(result);
 }
 
+export async function openSharedDraw() {
+  await updateSharedRoster((current) => {
+    if (current.drawOpen) return current;
+    if (current.guests.length < 2) throw new RosterError("The draw needs at least two guests.", 409);
+
+    const missing = current.guests.filter((guest) => !guest.wishlist?.length);
+    if (missing.length) {
+      const names = missing.map((guest) => guest.name).join(", ");
+      throw new RosterError(`Each guest needs at least one wishlist item. Still waiting for ${names}.`, 409);
+    }
+
+    return { ...current, drawOpen: true, draw: current.draw ?? [...createDraw(current.guests)] };
+  });
+}
+
 export async function getSharedRecipient(id: string) {
-  if (!isDrawOpen()) throw new RosterError("The draw opens after the grace period.", 403);
   const roster = await updateSharedRoster((current) => {
+    const status = getDrawStatus(current);
+    if (status === "closed") throw new RosterError("The organizer hasn’t opened the draw yet.", 403);
     if (!current.guests.some((guest) => guest.id === id)) {
       throw new RosterError("This guest is no longer on the roster. Go back and choose your name again.", 404);
     }
-    if (current.guests.length < 2) throw new RosterError("The draw needs at least two guests.", 409);
+    if (status === "needs-guests") throw new RosterError("The draw needs at least two guests.", 409);
+    if (status === "needs-wishlists") throw new RosterError("Each guest needs at least one wishlist item.", 409);
     return current.draw ? current : { ...current, draw: [...createDraw(current.guests)] };
   });
   const recipientId = roster.draw?.find(([giver]) => giver === id)?.[1];

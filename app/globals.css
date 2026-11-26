@@ -319,6 +319,11 @@ body {
   font: 500 14px/1.4 system-ui, sans-serif;
 }
 
+.draw-start-form {
+  margin-top: 24px;
+  text-align: left;
+}
+
 .card-frame[data-screen="drawing"] .gift-scene {
   margin-bottom: 0;
 }

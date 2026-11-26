@@ -7,7 +7,7 @@ export default async function Home() {
 
   return (
     <main className="stage">
-      <Exchange drawOpen={isDrawOpen()} />
+      <Exchange demoDrawOpen={isDrawOpen()} />
     </main>
   );
 }

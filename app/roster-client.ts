@@ -1,4 +1,4 @@
-import { parseGuestRoster, type Guest, type GuestRoster, type RosterChange } from "./guest-roster";
+import { parseGuestRoster, type Guest, type SharedGuestRoster, type RosterChange } from "./guest-roster";
 
 const legacyStorageKey = "santa-shuffle:guest-roster:v1";
 
@@ -20,11 +20,11 @@ function post<T>(change: RosterChange | { action: "draw"; id: string }) {
 }
 
 export function loadRoster(signal?: AbortSignal) {
-  return rosterRequest<GuestRoster | null>({ signal });
+  return rosterRequest<SharedGuestRoster | null>({ signal });
 }
 
 export function updateRoster(change: RosterChange) {
-  return post<GuestRoster>(change);
+  return post<SharedGuestRoster>(change);
 }
 
 export function drawRecipient(id: string) {
