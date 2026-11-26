@@ -20,7 +20,7 @@ export type GuestRoster = {
 };
 
 export type DrawStatus = "closed" | "needs-guests" | "needs-wishlists" | "open";
-export type SharedGuestRoster = GuestRoster & { drawStatus: DrawStatus };
+export type SharedGuestRoster = GuestRoster & { drawStatus: DrawStatus; hasPulled?: boolean };
 
 export type GuestEdit = Partial<Omit<Guest, "id">>;
 

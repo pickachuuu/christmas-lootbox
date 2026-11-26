@@ -1,12 +1,14 @@
 import { guestNameKey, parseGuestRoster, type Guest, type GuestRoster } from "../../guest-roster";
-import { changeSharedGuests, getSharedRecipient, readSharedRoster, RosterError } from "../../roster-storage";
+import {
+  changeSharedGuests, pullSharedRecipient, readSharedRecipient, readSharedRoster, RosterError,
+} from "../../roster-storage";
 
 function respond(body: unknown, status = 200) {
   return Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 }
 
 function respondToError(error: unknown) {
-  if (error instanceof RosterError) return respond({ error: error.message }, error.status);
+  if (error instanceof RosterError) return respond({ error: error.message, code: error.code }, error.status);
   console.error("Shared roster storage request failed.", error instanceof Error ? error.name : "Unknown error");
   return respond({ error: "The shared roster is unavailable. Try again." }, 503);
 }
@@ -58,7 +60,8 @@ async function applyChange(body: unknown) {
   }
   if ("id" in body && typeof body.id === "string" && body.id.trim()) {
     const id = body.id;
-    if (body.action === "draw") return getSharedRecipient(id);
+    if (body.action === "draw") return pullSharedRecipient(id);
+    if (body.action === "view-match") return readSharedRecipient(id);
     if (body.action === "remove") return changeSharedGuests((guests) => guests.filter((guest) => guest.id !== id));
     if (body.action === "edit" && "changes" in body) {
       const { changes } = body;
@@ -77,9 +80,10 @@ async function applyChange(body: unknown) {
   throw new RosterError("Invalid roster request.");
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    return respond(await readSharedRoster());
+    const guestId = new URL(request.url).searchParams.get("guestId") ?? undefined;
+    return respond(await readSharedRoster(guestId));
   } catch (error) {
     return respondToError(error);
   }

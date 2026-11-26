@@ -8,7 +8,7 @@ import {
   cleanWishlist, emptyWishlist, type DrawStatus, type Guest, type GuestCustomization,
 } from "./guest-roster";
 import PixelAvatar from "./pixel-avatar";
-import { drawRecipient, loadRoster, updateRoster } from "./roster-client";
+import { drawRecipient, loadGuestRoster, loadRoster, RosterRequestError, updateRoster, viewRecipient } from "./roster-client";
 import WishlistFields from "./wishlist-fields";
 
 type Screen = "welcome" | "guests" | "pull" | "drawing" | "avatar" | "wishlist" | "result";
@@ -45,7 +45,9 @@ export default function Exchange({ demoDrawOpen }: { demoDrawOpen: boolean }) {
   const [guests, setGuests] = useState<readonly Guest[]>(demoGuests);
   const [sharedDrawStatus, setSharedDrawStatus] = useState<DrawStatus>("closed");
   const [guestId, setGuestId] = useState<string | null>(null);
+  const [sharedHasPulled, setSharedHasPulled] = useState(false);
   const [demoDraw, setDemoDraw] = useState<ReadonlyMap<string, string> | null>(null);
+  const [demoPulled, setDemoPulled] = useState<ReadonlySet<string>>(() => new Set());
   const [recipient, setRecipient] = useState<Guest | null>(null);
   const [pullStep, setPullStep] = useState(0);
   const [demoCustomizations, setDemoCustomizations] = useState<Record<string, GuestCustomization>>({});
@@ -58,7 +60,9 @@ export default function Exchange({ demoDrawOpen }: { demoDrawOpen: boolean }) {
   const guest = guests.find(({ id }) => id === guestId);
   const isDemo = guests === demoGuests;
   const drawStatus = isDemo ? (demoDrawOpen ? "open" : "closed") : sharedDrawStatus;
-  const canPull = drawStatus === "open";
+  const alreadyPulled = isDemo ? guest !== undefined && demoPulled.has(guest.id) : sharedHasPulled;
+  const canPull = drawStatus === "open" && !alreadyPulled;
+  const canViewMatch = drawStatus === "open" && alreadyPulled;
   const guestCaption = isDemo ? "Demo guest list" : undefined;
 
   function customizationFor(entry: Guest): GuestCustomization {
@@ -109,20 +113,32 @@ export default function Exchange({ demoDrawOpen }: { demoDrawOpen: boolean }) {
     }
   }
 
-  function confirmGuest(event: FormEvent<HTMLFormElement>) {
+  async function confirmGuest(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (guest) setScreen("pull");
+    if (!guest || busy) return;
+    if (isDemo) {
+      setScreen("pull");
+    } else {
+      await checkDrawStatus();
+    }
   }
 
   async function checkDrawStatus() {
+    if (!guest) return;
     setError("");
     setBusy(true);
     try {
-      const roster = await loadRoster();
+      const roster = await loadGuestRoster(guest.id);
       if (!roster) throw new Error("The shared roster is unavailable. Try again.");
       setGuests(roster.guests);
       setSharedDrawStatus(roster.drawStatus);
-      if (!roster.guests.some(({ id }) => id === guestId)) returnToGuests();
+      setSharedHasPulled(roster.hasPulled ?? false);
+      if (roster.guests.some(({ id }) => id === guest.id)) {
+        setScreen("pull");
+      } else {
+        returnToGuests();
+        setError("This guest is no longer on the roster. Choose your name again.");
+      }
     } catch (error) {
       setError(error instanceof Error ? error.message : "Couldn’t check the draw status.");
     } finally {
@@ -130,8 +146,8 @@ export default function Exchange({ demoDrawOpen }: { demoDrawOpen: boolean }) {
     }
   }
 
-  async function pullName() {
-    if (!canPull || !guest) return;
+  async function showMatch(reopen: boolean) {
+    if (!guest || busy || (reopen ? !canViewMatch : !canPull)) return;
     setError("");
     setBusy(true);
     try {
@@ -139,16 +155,22 @@ export default function Exchange({ demoDrawOpen }: { demoDrawOpen: boolean }) {
         const draw = demoDraw ?? createDraw(demoGuests);
         setDemoDraw(draw);
         setRecipient(demoGuests.find(({ id }) => id === draw.get(guest.id))!);
+        setDemoPulled((pulled) => new Set(pulled).add(guest.id));
       } else {
-        setRecipient(await drawRecipient(guest.id));
+        setRecipient(await (reopen ? viewRecipient(guest.id) : drawRecipient(guest.id)));
+        setSharedHasPulled(true);
       }
-      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      if (reopen || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
         setScreen("result");
       } else {
         setPullStep(0);
         setScreen("drawing");
       }
     } catch (error) {
+      if (error instanceof RosterRequestError && error.code === "already-pulled") {
+        setSharedHasPulled(true);
+        return;
+      }
       setError(error instanceof Error ? error.message : "Couldn’t pull a name. Try again.");
     } finally {
       setBusy(false);
@@ -194,6 +216,8 @@ export default function Exchange({ demoDrawOpen }: { demoDrawOpen: boolean }) {
   function returnToGuests() {
     setError("");
     setGuestId(null);
+    setSharedHasPulled(false);
+    setRecipient(null);
     setScreen("guests");
   }
 
@@ -241,6 +265,7 @@ export default function Exchange({ demoDrawOpen }: { demoDrawOpen: boolean }) {
                         name="guest"
                         value={id}
                         checked={guestId === id}
+                        disabled={busy}
                         onChange={() => setGuestId(id)}
                       />
                       <span className="guest-tile">
@@ -253,10 +278,11 @@ export default function Exchange({ demoDrawOpen }: { demoDrawOpen: boolean }) {
                   );
                 })}
               </div>
-              <button className="game-button" type="submit" disabled={!guest}>
-                Continue<span className="button-arrow" aria-hidden="true" />
+              {error && <p className="customization-error" role="alert">{error}</p>}
+              <button className="game-button" type="submit" disabled={!guest || busy}>
+                {busy ? "Checking draw…" : "Continue"}<span className="button-arrow" aria-hidden="true" />
               </button>
-              <button className="game-button game-button--secondary" type="button" onClick={() => setScreen("welcome")}>
+              <button className="game-button game-button--secondary" type="button" onClick={() => setScreen("welcome")} disabled={busy}>
                 Back
               </button>
             </form>
@@ -269,20 +295,25 @@ export default function Exchange({ demoDrawOpen }: { demoDrawOpen: boolean }) {
             <h1 id="exchange-title" ref={title} tabIndex={-1}>Ready, {guest?.name}?</h1>
             <button
               className="game-button draw-button"
-              onClick={pullName}
+              onClick={() => showMatch(false)}
               disabled={!canPull || busy}
-              aria-describedby={canPull ? undefined : "draw-status"}
+              aria-describedby={drawStatus === "open" ? undefined : "draw-status"}
             >
-              {canPull && busy ? "Getting your match…" : "Pull a name"}
+              {alreadyPulled ? "Already pulled" : canPull && busy ? "Getting your match…" : "Pull a name"}
               {!canPull && <span className="button-lock" aria-hidden="true" />}
             </button>
+            {canViewMatch && (
+              <button className="game-button game-button--secondary" onClick={() => showMatch(true)} disabled={busy}>
+                {busy ? "Loading your match…" : "View my match"}
+              </button>
+            )}
             {drawStatus !== "open" && (
               <p id="draw-status" className="screen-caption">
                 {drawStatusMessages[drawStatus]}
               </p>
             )}
             {error && <p className="customization-error" role="alert">{error}</p>}
-            {!canPull && !isDemo && (
+            {drawStatus !== "open" && !isDemo && (
               <button className="game-button game-button--secondary" onClick={checkDrawStatus} disabled={busy}>
                 Check draw status
               </button>

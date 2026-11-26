@@ -2,16 +2,23 @@ import { parseGuestRoster, type Guest, type SharedGuestRoster, type RosterChange
 
 const legacyStorageKey = "santa-shuffle:guest-roster:v1";
 
-async function rosterRequest<T>(options?: RequestInit): Promise<T> {
-  const response = await fetch("/api/roster", { cache: "no-store", ...options });
+export class RosterRequestError extends Error {
+  constructor(message: string, readonly code?: string) {
+    super(message);
+  }
+}
+
+async function rosterRequest<T>(options?: RequestInit, guestId?: string): Promise<T> {
+  const query = guestId ? `?${new URLSearchParams({ guestId })}` : "";
+  const response = await fetch(`/api/roster${query}`, { cache: "no-store", ...options });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
-    throw new Error(body?.error ?? "Couldn’t connect to the shared roster. Try again.");
+    throw new RosterRequestError(body?.error ?? "Couldn’t connect to the shared roster. Try again.", body?.code);
   }
   return response.json();
 }
 
-function post<T>(change: RosterChange | { action: "draw"; id: string }) {
+function post<T>(change: RosterChange | { action: "draw" | "view-match"; id: string }) {
   return rosterRequest<T>({
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -23,12 +30,20 @@ export function loadRoster(signal?: AbortSignal) {
   return rosterRequest<SharedGuestRoster | null>({ signal });
 }
 
+export function loadGuestRoster(id: string) {
+  return rosterRequest<SharedGuestRoster | null>(undefined, id);
+}
+
 export function updateRoster(change: RosterChange) {
   return post<SharedGuestRoster>(change);
 }
 
 export function drawRecipient(id: string) {
   return post<Guest>({ action: "draw", id });
+}
+
+export function viewRecipient(id: string) {
+  return post<Guest>({ action: "view-match", id });
 }
 
 export function readBrowserRoster() {

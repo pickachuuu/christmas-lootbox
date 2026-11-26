@@ -5,7 +5,7 @@ import { isDrawOpen } from "./draw-config";
 import presets from "./guest-presets.json";
 import { parseGuestRoster, type DrawStatus, type Guest, type GuestRoster, type SharedGuestRoster } from "./guest-roster";
 
-type StoredRoster = GuestRoster & { drawOpen?: true; draw?: [string, string][] };
+type StoredRoster = GuestRoster & { drawOpen?: true; draw?: [string, string][]; pulled?: string[] };
 
 const key = "santa-shuffle:guest-roster:v1";
 const initialRoster = parseGuestRoster(presets);
@@ -19,7 +19,7 @@ const compareAndSet = `
 let redis: Redis | undefined;
 
 export class RosterError extends Error {
-  constructor(message: string, readonly status = 400) {
+  constructor(message: string, readonly status = 400, readonly code?: string) {
     super(message);
   }
 }
@@ -83,6 +83,14 @@ function decodeRoster(raw: string | null): StoredRoster {
     recipients.add(recipient);
     assignments.push([giver, recipient]);
   }
+  if ("pulled" in stored) {
+    const { pulled } = stored;
+    if (!Array.isArray(pulled) || new Set(pulled).size !== pulled.length ||
+        pulled.some((id) => typeof id !== "string" || !ids.has(id))) {
+      throw new Error("Invalid stored pull history.");
+    }
+    roster.pulled = pulled;
+  }
   return { ...roster, draw: assignments };
 }
 
@@ -99,9 +107,17 @@ function publicRoster(roster: StoredRoster): SharedGuestRoster {
   return { version, guests, drawStatus: getDrawStatus(roster) };
 }
 
-export async function readSharedRoster() {
+async function readStoredRoster() {
   const client = getRedis();
-  return client ? publicRoster(decodeRoster(await client.get<string>(key))) : null;
+  return client ? decodeRoster(await client.get<string>(key)) : null;
+}
+
+export async function readSharedRoster(guestId?: string) {
+  const roster = await readStoredRoster();
+  if (!roster) return null;
+  return guestId
+    ? { ...publicRoster(roster), hasPulled: roster.pulled?.includes(guestId) ?? false }
+    : publicRoster(roster);
 }
 
 async function updateSharedRoster(change: (current: StoredRoster) => StoredRoster) {
@@ -127,6 +143,9 @@ export async function changeSharedGuests(change: (guests: Guest[]) => Guest[]) {
     const guests = change(current.guests);
     const ids = new Set(current.guests.map(({ id }) => id));
     const sameGuests = ids.size === guests.length && guests.every(({ id }) => ids.has(id));
+    if (!sameGuests && current.pulled?.length) {
+      throw new RosterError("Guests can’t be added or removed after someone has pulled a name.", 409);
+    }
     return { ...current, guests, draw: sameGuests ? current.draw : undefined };
   });
   return publicRoster(result);
@@ -147,7 +166,14 @@ export async function openSharedDraw() {
   });
 }
 
-export async function getSharedRecipient(id: string) {
+function assignedRecipient(roster: StoredRoster, id: string) {
+  const recipientId = roster.draw?.find(([giver]) => giver === id)?.[1];
+  const recipient = roster.guests.find((guest) => guest.id === recipientId);
+  if (!recipient) throw new Error("Missing stored recipient.");
+  return recipient;
+}
+
+export async function pullSharedRecipient(id: string) {
   const roster = await updateSharedRoster((current) => {
     const status = getDrawStatus(current);
     if (status === "closed") throw new RosterError("The organizer hasn’t opened the draw yet.", 403);
@@ -156,10 +182,22 @@ export async function getSharedRecipient(id: string) {
     }
     if (status === "needs-guests") throw new RosterError("The draw needs at least two guests.", 409);
     if (status === "needs-wishlists") throw new RosterError("Each guest needs at least one wishlist item.", 409);
-    return current.draw ? current : { ...current, draw: [...createDraw(current.guests)] };
+    if (current.pulled?.includes(id)) {
+      throw new RosterError("You’ve already pulled a name.", 409, "already-pulled");
+    }
+    return {
+      ...current,
+      draw: current.draw ?? [...createDraw(current.guests)],
+      pulled: [...(current.pulled ?? []), id],
+    };
   });
-  const recipientId = roster.draw?.find(([giver]) => giver === id)?.[1];
-  const recipient = roster.guests.find((guest) => guest.id === recipientId);
-  if (!recipient) throw new Error("Missing stored recipient.");
-  return recipient;
+  return assignedRecipient(roster, id);
+}
+
+export async function readSharedRecipient(id: string) {
+  const roster = await readStoredRoster();
+  if (!roster) throw new RosterError("Shared roster storage hasn’t been configured.", 503);
+  if (getDrawStatus(roster) !== "open") throw new RosterError("The draw isn’t open.", 403);
+  if (!roster.pulled?.includes(id)) throw new RosterError("Pull a name to see your match.", 404);
+  return assignedRecipient(roster, id);
 }
