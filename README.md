@@ -5,9 +5,9 @@
 <p align="center"><strong>A pixel-art Manito Manita draw for your Christmas party.</strong></p>
 
 <p align="center">
-  <a href="#try-it-locally">Try it locally</a> ·
-  <a href="#host-an-exchange">Host an exchange</a> ·
-  <a href="#how-the-draw-works">How the draw works</a>
+  <a href="#try-it-locally"><img src="docs/buttons/try-it.png" width="90" height="40" alt="Try it locally"></a>
+  <a href="#host-an-exchange"><img src="docs/buttons/host-a-draw.png" width="134" height="40" alt="Host a draw"></a>
+  <a href="#how-the-draw-works"><img src="docs/buttons/draw-rules.png" width="110" height="40" alt="Draw rules"></a>
 </p>
 
 Pick your name, put on a ridiculous hat, and leave a few gift ideas. When the organizer opens the draw, unwrap the gift to see who you’re shopping for.
